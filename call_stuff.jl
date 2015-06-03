@@ -11,7 +11,11 @@ scores_dict_true = calc_asympt_scores(queries_dict, relevance);
 lambda_val = 0.1
 eta_val = 100
 k_agg = 100
-n_iter = 10^4
+#n_iter = 10^4
+n_iter = 2*10^5
+#k_vals = [1, 10, 100, 1000]
+k_vals = [1, 100]
+
 @time thetas = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat);
 
 @time thetas = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat, "leastsquares_true");
@@ -53,10 +57,6 @@ end
 
 # TODO: why is aggregation 1 so much slower than pairwise??
 # 4.2 seconds versus 218 seconds for aggregation 1, 232 for aggregation 10
-
-k_vals = [1, 10, 100, 1000]
-n_iter = 2*10^5
-
 
 @time thetas_pairwise, thetas_ndcg = run_test(k_vals, n_iter, lambda_val, eta_val,
                   queries_dict, relevance, features_mat);

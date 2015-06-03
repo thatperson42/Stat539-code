@@ -9,9 +9,9 @@ function load_ms_data(data_f)
     println("Will open data now")
     f = open(data_f)
     n_lines = countlines(data_f)
-    features_mat = float16(zeros(d, n_lines))
+    features_mat = float64(zeros(d, n_lines))
     queries = zeros(n_lines)
-    relevance = float32(zeros(n_lines))
+    relevance = float64(zeros(n_lines))
     line_num = 0
 # queries_dict will have queries as keys, array of line numbers as value
     queries_dict = Dict{Int, Array{Int, 1}}()
@@ -95,10 +95,11 @@ function update_ls_surrogate(features_mat, lambda, eta, theta_old, s,
 # TODO: this is same as in ndcg_loss. Reference it somehow?
     pi_alpha_min = get_order(s)
     Z_tmp = sum(G_tmp ./ map((x) -> log(1+x), pi_alpha_min))
+    println("sum with G and Z is ", sum(G_tmp) / Z_tmp)
 # check Z_tmp not near zero
-    if Z_tmp < 10.0^(-5)
+    if Z_tmp < 10.0^(-5) || isnan(Z_tmp)
         if verbose
-            println("Warning: skipping iteration! Z is low in update_ls_surrogate")
+            println("Warning: skipping iteration! Z is low or missing in update_ls_surrogate")
         end
         return theta_old
     end
@@ -207,12 +208,12 @@ function run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
 =#
 
     for t in 1:n_time_steps
-#= this check takes surprisingly long if apply to all of theta.
+# this check takes surprisingly long if apply to all of theta.
         if any(isnan(theta[:,t]))
             println("Quitting at ", t, " because of missing values in theta")
             break
         end
-=#
+
         eta_t = eta_0 / sqrt(t)
         q = sample(queries)
         x_lines = queries_dict[q]
