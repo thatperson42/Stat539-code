@@ -3,18 +3,20 @@ include("load_data.jl")
 
 # takes 80 seconds to load in train.txt
 @time queries_count, queries_dict, relevance, features_mat = load_ms_data("Fold1/train.txt");
+
 #@time queries_count, queries_dict, relevance, features_mat = load_all_data();
 queries = collect(keys(queries_dict));
 normalize_features!(features_mat)
 scores_dict_true = calc_asympt_scores(queries_dict, relevance);
 
 lambda_val = 0.1
-eta_val = 100
+eta_val = 1.0
 k_agg = 100
-#n_iter = 10^4
-n_iter = 2*10^5
-#k_vals = [1, 10, 100, 1000]
-k_vals = [1, 100]
+n_iter = 10^4 # For testing
+#n_iter = 2*10^5
+k_vals = [1, 10, 100, 1000]
+#k_vals = [1, 100]
+n_experiments = 10
 
 @time thetas = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat);
 
@@ -72,7 +74,6 @@ end
 risk_ndcg
 =#
 
-n_experiments = 1
 risk_pairwise = zeros(n_experiments)
 risk_ndcg = zeros(n_experiments, length(k_vals))
 for i in 1:n_experiments
@@ -82,8 +83,8 @@ for i in 1:n_experiments
                       queries_dict, relevance, features_mat);
 
     println(thetas_pairwise[:, end])
-    println(thetas_ndcg[1][:, end])
-    println(thetas_ndcg[10][:, end])
+    println(thetas_ndcg[k_vals[1]][:, end])
+    println(thetas_ndcg[k_vals[end]][:, end])
     @time risk_pairwise[i] = estimate_ndcg_loss(queries, queries_dict, scores_dict_true,
                                                 features_mat, thetas_pairwise[:, end])
     for k_ind in 1:length(k_vals)
