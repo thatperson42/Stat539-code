@@ -1,4 +1,5 @@
 
+using Winston
 include("load_data.jl")
 
 # takes 80 seconds to load in train.txt
@@ -10,7 +11,7 @@ normalize_features!(features_mat)
 scores_dict_true = calc_asympt_scores(queries_dict, relevance);
 
 lambda_val = 0.1
-eta_val = 1.0
+eta_val = 0.01
 k_agg = 100
 n_iter = 10^4 # For testing
 #n_iter = 2*10^5
@@ -20,6 +21,7 @@ n_experiments = 10
 
 @time thetas = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat);
 
+@time thetas, risk_tally = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat, "leastsquares", true);
 @time thetas = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat, "leastsquares_true");
 @profile thetas = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat, "leastsquares_true");
 ProfileView.view()

@@ -195,7 +195,7 @@ end
 
 
 function run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
-                     features_mat, which_loss="leastsquares")
+                     features_mat, which_loss="leastsquares", record_gap=false)
     # Initialize parameters
     theta = zeros(d, n_time_steps+1)
     queries = collect(keys(queries_dict))
@@ -206,6 +206,10 @@ function run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
         scores_dict_true = calc_asympt_scores(queries_dict, relevance)
     end
 =#
+    if record_gap
+        risk_tally = Float64[]
+        est_risks = zeros(100)
+    end
 
     for t in 1:n_time_steps
 # this check takes surprisingly long if apply to all of theta.
@@ -214,7 +218,9 @@ function run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
             break
         end
 
+        # TODO: figure out!
         eta_t = eta_0 / sqrt(t)
+        #eta_t = eta_0 / t
         q = sample(queries)
         x_lines = queries_dict[q]
         m = length(x_lines)
@@ -228,6 +234,22 @@ function run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
         if which_loss == "leastsquares"
 # generate the score
             s = estimate_scores(relevance, queries_dict, q, k)
+            if record_gap
+                if t % 100 == 0
+                    append!(risk_tally, [mean(est_risks)])
+                end
+# Record the gap
+                alpha = zeros(m)
+                for i in 1:m
+                    alpha[i] = f_q(theta[:,t], features_mat[:, x_lines[i]])
+                end
+                #est_risks[t % 100 + 1] = ls_loss(alpha, s, m)
+                est_risks[t % 100 + 1] = ndcg_loss(alpha, scores_dict_true[q])
+                if isnan(est_risks[t % 100 + 1])
+                    println(scores_dict_true[q])
+                    println(alpha)
+                end
+            end
 
             theta[:,t+1] = update_ls_surrogate(features_mat, lambda, eta_t, theta[:,t],
                        s, x_lines)
@@ -241,13 +263,13 @@ function run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
             preference = rand(Bernoulli(p_tmp))
             if preference == 1
 # This means pair[1] is preferred to pair[2]
+            # i ≻ j
                 x_i = x_lines[pair[1]]
                 x_j = x_lines[pair[2]]
             else
                 x_i = x_lines[pair[2]]
                 x_j = x_lines[pair[1]]
             end
-            # i ≻ j
             
             theta[:, t+1] = update_logistic_surrogate(features_mat, lambda, eta_t,
                      theta[:,t], x_i, x_j)
@@ -256,10 +278,15 @@ function run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
         end
     end
 
-    theta
+    if record_gap
+        return theta, risk_tally
+    else
+        return theta
+    end
 end
 
 function get_order(alpha::Array)
+# get_order([1, 3, 2]) == [3, 1, 2]
 # return rank vector for array alpha, where high scores come up earlier
     sorted = sortperm(alpha, rev=true)
     m = length(alpha)
@@ -271,10 +298,22 @@ function get_order(alpha::Array)
     return order
 end
 
+function ls_loss(alpha, s, m)
+    G_s = map(G, s)
+    pi_alpha_min = get_order(s)
+    Z_s = sum(G_s ./ map((x) -> log(1+x), pi_alpha_min))
+    return norm((alpha - G_s / Z_s))^2 / (2*m)
+end
+
+
 function ndcg_loss(alpha, s)
+    if norm(s) < 10.0^(-6)
+# No difference between the items
+        return 0.0
+    end
 # Normalized Discounted Cumulative Game family loss
 # p.13, eq.14
-    G_s = map((x) -> 2^x - 1, s)
+    G_s = map((x) -> 2.0^x - 1, s)
     pi_alpha = get_order(alpha)
     F_pi = map((x) -> log(1+x), pi_alpha)
 # Maximizing Z happens when get the order corresponding to s
@@ -324,6 +363,53 @@ function estimate_ndcg_loss(queries, queries_dict, scores_dict_true, features_ma
     risk_estimate /= length(queries)
     return risk_estimate
 end
+
+
+function estimate_best_risk(lambda, eta_0, k, queries_dict, relevance,
+                            features_mat, which_loss="leastsquares", verbose=false)
+    queries = collect(keys(queries_dict))
+# Do 100,000 updates
+    n_time_steps = 10^5
+    theta_min = run_updater(lambda, eta_0, k, n_time_steps, queries_dict, relevance,
+                     features_mat, which_loss)[:, end]
+    # now evaluate on an additional 50,000 samples
+    n_test_steps = 5*10^4
+    risk_est = 0.0
+    for i in 1:n_test_steps
+# sample query
+        q = sample(queries)
+        x_lines = queries_dict[q]
+        m = length(x_lines)
+        while m < 2
+            #println("Warning: m < 2. Skipping.")
+            q = sample(queries)
+            x_lines = queries_dict[q]
+            m = length(x_lines)
+        end
+# sample k-points and estimate score
+        s = estimate_scores(relevance, queries_dict, q, k)
+# estimate risk term
+        G_tmp = map(G, s)
+        pi_alpha_min = get_order(s)
+        Z_tmp = sum(G_tmp ./ map((x) -> log(1+x), pi_alpha_min))
+        if Z_tmp < 10.0^(-5) || isnan(Z_tmp)
+            if verbose
+                println("Warning: skipping iteration! Z is low or missing")
+            end
+            continue
+        end
+        tmp_sum = 0.0
+        for i in 1:m
+            x_tmp = features_mat[:, x_lines[i]]
+            tmp_sum += (f_q(theta_old, x_tmp) - G_tmp[i] / Z_tmp)^2
+        end
+        risk_est += tmp_sum / (2*m)
+    end
+    risk_est /= n_test_steps
+    
+    return risk_est
+end
+
 
 # todo: check query 29716, why are the asymptotic scores zero??
 
