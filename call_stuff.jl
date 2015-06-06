@@ -34,7 +34,7 @@ ProfileView.view()
 
 # todo: start storing partway information
 function run_test(k_vals, n, lambda_val, eta_val,
-                  queries_dict, relevance, features_mat)
+                  queries_dict, relevance, features_mat, est_loss=false)
     
 # pairwise surrogate loss
     println("At pairwise surrogate loss")
@@ -43,12 +43,19 @@ function run_test(k_vals, n, lambda_val, eta_val,
 
 # aggregated surrogate NDCG
     thetas_ndcg = Dict()
+    risk_est = Dict()
     for k in k_vals
         #n_tmp = int(ceil(n / k))
         n_tmp = n
         println("At NDCG surrogate loss, aggregation ", k)
-        @time thetas_ndcg[k] = run_updater(lambda_val, eta_val, k, n_tmp, queries_dict, 
-                                     relevance, features_mat)
+        if est_loss
+            @time thetas_ndcg[k], risk_est[k] = run_updater(lambda_val, eta_val, k,
+                                         n_tmp, queries_dict, 
+                                         relevance, features_mat, "leastsquares", est_loss)
+        else
+            @time thetas_ndcg[k] = run_updater(lambda_val, eta_val, k, n_tmp, queries_dict, 
+                                         relevance, features_mat)
+        end
     end
 
 #=
@@ -56,7 +63,11 @@ function run_test(k_vals, n, lambda_val, eta_val,
     thetas_score = run_updater(lambda_val, eta_val, 0, n_iter, 
                           queries_dict, relevance, features_mat, "leastsquares_true");
 =#
-    return thetas_pairwise, thetas_ndcg
+    if est_loss
+        return thetas_pairwise, thetas_ndcg, risk_est
+    else
+        return thetas_pairwise, thetas_ndcg
+    end
 end
 
 # TODO: why is aggregation 1 so much slower than pairwise??
@@ -76,13 +87,20 @@ end
 risk_ndcg
 =#
 
+eta_vals = log10(logspace(0.001, 10.0, n_experiments))
+    eta_val = eta_vals[i]
+risks_plot_tmp = Dict()
+
 risk_pairwise = zeros(n_experiments)
+k_vals = [10, 100]
 risk_ndcg = zeros(n_experiments, length(k_vals))
+risks_ndcg_partway = Dict()
 for i in 1:n_experiments
+
     println("---- iteration ", i, " ----")
     tic()
-    @time thetas_pairwise, thetas_ndcg = run_test(k_vals, n_iter, lambda_val, eta_val,
-                      queries_dict, relevance, features_mat);
+    @time thetas_pairwise, thetas_ndcg, risks_ndcg_partway[i] = run_test(k_vals, n_iter, lambda_val, eta_val,
+                      queries_dict, relevance, features_mat, true);
 
     println(thetas_pairwise[:, end])
     println(thetas_ndcg[k_vals[1]][:, end])
@@ -101,46 +119,34 @@ for i in 1:n_experiments
 end
 
 println(risk_pairwise)
+mean(risk_pairwise)
+std(risk_pairwise)
+[mean(risk_ndcg[:,k_ind]) for k_ind in 1:length(k_vals)]
+[std(risk_ndcg[:,k_ind]) for k_ind in 1:length(k_vals)]
 println(risk_ndcg)
 
-risk_pairwise
-0.685094
- 0.655094
- 0.676073
- 0.666401
- 0.657391
- 0.67671 
- 0.655747
- 0.655865
- 0.656398
- 0.647723
-# gives 0.6632 w/ std dev 0.012
-risk_ndcg
-Dict{Any,Any} with 10 entries:
-  7  => {100=>0.6546883492186939,10=>0.6613630076106869,1000=>0.6622487385951138,1=>0.650121541447…
-  4  => {100=>0.6558635683436541,10=>0.6575280298636348,1000=>0.6767600594855862,1=>0.677388184907…
-  9  => {100=>0.6569437387647521,10=>0.6593249591937944,1000=>0.6739926167172102,1=>0.656218054257…
-  10 => {100=>0.6524349795518835,10=>0.6812047059754145,1000=>0.6706352224886658,1=>0.670486066327…
-  2  => {100=>0.6524087980921967,10=>0.6736081617778403,1000=>0.6706620228266958,1=>0.665053071016…
-  3  => {100=>0.657857439811683,10=>0.6608097917862092,1000=>0.6447714413260504,1=>0.6418471980840…
-  5  => {100=>0.6372417178548101,10=>0.669765251409642,1000=>0.6544477411420798,1=>0.6708440678773…
-  8  => {100=>0.6676817709121099,10=>0.6824331782631172,1000=>0.6416694694802426,1=>0.692760568497…
-  6  => {100=>0.655888369337893,10=>0.6531263507398304,1000=>0.6608256137280748,1=>0.6714356166798…
-  1  => {100=>0.6882024660114637,10=>0.6722127192686054,1000=>0.651231416455179,1=>0.6539085581500…
-
-
-for k in k_vals
-    ww_tmp = zeros(10)
-    for i in 1:10
-        ww_tmp[i] = risk_ndcg[i][k]
+risks_ndcg_partway_tmp = risks_ndcg_partway
+mean_risk = zeros(length(risks_ndcg_partway[1][10]), length(k_vals))
+std_risk = zeros(length(risks_ndcg_partway[1][10]), length(k_vals))
+for k_ind in 1:length(k_vals)
+    k = k_vals[k_ind]
+    for j in 1:length(risks_ndcg_partway[1][k])
+        vals = [risks_ndcg_partway[i][k][j] for i in 1:n_experiments]
+        mean_risk[j, k_ind] = mean(float64(vals))
+        std_risk[j, k_ind] = std(float64(vals))
     end
-    println("for k=", k, ": mean=", mean(ww_tmp), ", sd=", std(ww_tmp))
 end
-for k=1: mean=0.665006292724529, sd=0.014859898844731309
-for k=10: mean=0.6671376155888774, sd=0.01016230024607625
-for k=100: mean=0.6579211197899141, sd=0.012996268933176122
-for k=1000: mean=0.6607244342244898, sd=0.012381002484838095
 
-
+x_vals = (1:(n_iter / 100)) * 100
+for k_ind in 1:length(k_vals)
+    p = plot(x_vals, mean_risk[:,k_ind], xlabel="Iteration",
+             ylabel="Estimated risk", "-")
+    title(string("k=", k_vals[k_ind]))
+    c1 = Curve(x_vals, mean_risk[:,k_ind] - 1.6*std_risk[:,k_ind]/sqrt(n_experiments), color="red")
+    c2 = Curve(x_vals, mean_risk[:,k_ind] + 1.6*std_risk[:,k_ind]/sqrt(n_experiments), color="red")
+    add(p, c1)
+    add(p, c2)
+    savefig(string("Estim_risk_k", k_vals[k_ind], ".png"))
+end
 
 
