@@ -13,9 +13,9 @@ scores_dict_true = calc_asympt_scores(queries_dict, relevance);
 lambda_val = 0.1
 eta_val = 0.01
 k_agg = 100
-n_iter = 10^4 # For testing
-#n_iter = 2*10^5
-k_vals = [1, 10, 100, 1000]
+#n_iter = 10^4 # For testing
+n_iter = 2*10^5
+k_vals = [1, 10, 100, 1000, 10000]
 #k_vals = [1, 100]
 n_experiments = 10
 
@@ -76,8 +76,10 @@ end
 risk_ndcg
 =#
 
+n_experiments = 20
 risk_pairwise = zeros(n_experiments)
 risk_ndcg = zeros(n_experiments, length(k_vals))
+risk_ndcg_true = zeros(n_experiments)
 for i in 1:n_experiments
     println("---- iteration ", i, " ----")
     tic()
@@ -96,50 +98,49 @@ for i in 1:n_experiments
                   features_mat, thetas_ndcg[k][:, end])
     end
 
+    @time thetas_ndcg_true = run_updater(lambda_val, eta_val, 0, n_iter, queries_dict, 
+                                     relevance, features_mat, "leastsquares_true")
+    @time risk_ndcg_true[i] = estimate_ndcg_loss(queries, queries_dict, scores_dict_true,
+                                                features_mat, thetas_ndcg_true[:, end])
     toc()
     println("-------------------")
 end
 
 println(risk_pairwise)
 println(risk_ndcg)
+means_pairwise = mean(risk_pairwise)
+#0.6558810
+std_pairwise = std(risk_pairwise) / sqrt(n_experiments)
+#0.00155878
+means_ndcg_true = mean(risk_ndcg_true)
+#0.6692532482415287
+std_ndcg_true = std(risk_ndcg_true) / sqrt(n_experiments)
+#9.573520721318257e-5
+means_ndcg = mapslices(mean, risk_ndcg, 1)
+#0.670931  0.667591  0.663506  0.663353
+std_ndcg = mapslices((x) -> std(x) / sqrt(n_experiments), risk_ndcg, 1)
+#0.0015444  0.00114515  0.000955365  0.000673178
 
-risk_pairwise
-0.685094
- 0.655094
- 0.676073
- 0.666401
- 0.657391
- 0.67671 
- 0.655747
- 0.655865
- 0.656398
- 0.647723
-# gives 0.6632 w/ std dev 0.012
-risk_ndcg
-Dict{Any,Any} with 10 entries:
-  7  => {100=>0.6546883492186939,10=>0.6613630076106869,1000=>0.6622487385951138,1=>0.650121541447…
-  4  => {100=>0.6558635683436541,10=>0.6575280298636348,1000=>0.6767600594855862,1=>0.677388184907…
-  9  => {100=>0.6569437387647521,10=>0.6593249591937944,1000=>0.6739926167172102,1=>0.656218054257…
-  10 => {100=>0.6524349795518835,10=>0.6812047059754145,1000=>0.6706352224886658,1=>0.670486066327…
-  2  => {100=>0.6524087980921967,10=>0.6736081617778403,1000=>0.6706620228266958,1=>0.665053071016…
-  3  => {100=>0.657857439811683,10=>0.6608097917862092,1000=>0.6447714413260504,1=>0.6418471980840…
-  5  => {100=>0.6372417178548101,10=>0.669765251409642,1000=>0.6544477411420798,1=>0.6708440678773…
-  8  => {100=>0.6676817709121099,10=>0.6824331782631172,1000=>0.6416694694802426,1=>0.692760568497…
-  6  => {100=>0.655888369337893,10=>0.6531263507398304,1000=>0.6608256137280748,1=>0.6714356166798…
-  1  => {100=>0.6882024660114637,10=>0.6722127192686054,1000=>0.651231416455179,1=>0.6539085581500…
+w = length(k_vals)
+p = semilogx(k_vals, means_ndcg)
+p1 = Curve(k_vals, means_ndcg - 1.96*std_ndcg, color="blue")
+p2 = Curve(k_vals, means_ndcg + 1.96*std_ndcg, color="blue")
+q1 = Curve(k_vals, [means_ndcg_true for i in 1:w])
+q2 = Curve(k_vals, [means_ndcg_true - 1.96*std_ndcg_true for i in 1:w], color="magenta")
+q3 = Curve(k_vals, [means_ndcg_true + 1.96*std_ndcg_true for i in 1:w], color="magenta")
 
-
-for k in k_vals
-    ww_tmp = zeros(10)
-    for i in 1:10
-        ww_tmp[i] = risk_ndcg[i][k]
-    end
-    println("for k=", k, ": mean=", mean(ww_tmp), ", sd=", std(ww_tmp))
-end
-for k=1: mean=0.665006292724529, sd=0.014859898844731309
-for k=10: mean=0.6671376155888774, sd=0.01016230024607625
-for k=100: mean=0.6579211197899141, sd=0.012996268933176122
-for k=1000: mean=0.6607244342244898, sd=0.012381002484838095
+c1 = Curve(k_vals, [mean(risk_pairwise) for i in 1:w])
+c2 = Curve(k_vals, [means_pairwise - 1.96*std_pairwise for i in 1:w], color="red")
+c3 = Curve(k_vals, [means_pairwise + 1.96*std_pairwise for i in 1:w], color="red")
+add(p, p1)
+add(p, p2)
+add(p, q1)
+add(p, q2)
+add(p, q3)
+add(p, c1)
+add(p, c2)
+add(p, c3)
+savefig("Figure3.png")
 
 
 
