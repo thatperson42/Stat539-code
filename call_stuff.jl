@@ -17,7 +17,6 @@ k_agg = 100
 n_iter = 2*10^5
 k_vals = [1, 10, 100, 1000, 10000]
 #k_vals = [1, 100]
-n_experiments = 10
 
 @time thetas = run_updater(lambda_val, eta_val, k_agg, n_iter, queries_dict, relevance, features_mat);
 
@@ -91,20 +90,25 @@ eta_vals = log10(logspace(0.001, 10.0, n_experiments))
     eta_val = eta_vals[i]
 risks_plot_tmp = Dict()
 
+n_experiments = 50
 risk_pairwise = zeros(n_experiments)
-k_vals = [10, 100]
 risk_ndcg = zeros(n_experiments, length(k_vals))
-risks_ndcg_partway = Dict()
+risk_ndcg_true = zeros(n_experiments)
+#risks_ndcg_partway = Dict()
 for i in 1:n_experiments
 
     println("---- iteration ", i, " ----")
     tic()
-    @time thetas_pairwise, thetas_ndcg, risks_ndcg_partway[i] = run_test(k_vals, n_iter, lambda_val, eta_val,
-                      queries_dict, relevance, features_mat, true);
+    #@time thetas_pairwise, thetas_ndcg, risks_ndcg_partway[i] = run_test(k_vals, n_iter, lambda_val, eta_val,
+    #                  queries_dict, relevance, features_mat, true);
+    @time thetas_pairwise, thetas_ndcg = run_test(k_vals, n_iter, lambda_val, eta_val,
+                      queries_dict, relevance, features_mat);
 
+#=
     println(thetas_pairwise[:, end])
     println(thetas_ndcg[k_vals[1]][:, end])
     println(thetas_ndcg[k_vals[end]][:, end])
+=#
     @time risk_pairwise[i] = estimate_ndcg_loss(queries, queries_dict, scores_dict_true,
                                                 features_mat, thetas_pairwise[:, end])
     for k_ind in 1:length(k_vals)
@@ -122,12 +126,14 @@ for i in 1:n_experiments
     println("-------------------")
 end
 
+#=
 println(risk_pairwise)
 mean(risk_pairwise)
 std(risk_pairwise)
 [mean(risk_ndcg[:,k_ind]) for k_ind in 1:length(k_vals)]
 [std(risk_ndcg[:,k_ind]) for k_ind in 1:length(k_vals)]
 println(risk_ndcg)
+=#
 means_pairwise = mean(risk_pairwise)
 #0.6558810
 std_pairwise = std(risk_pairwise) / sqrt(n_experiments)
@@ -160,7 +166,7 @@ add(p, q3)
 add(p, c1)
 add(p, c2)
 add(p, c3)
-savefig("Figure3.png")
+savefig(string("Figure3_", strftime("%Y%m%d", time()), ".png"))
 
 risks_ndcg_partway_tmp = risks_ndcg_partway
 mean_risk = zeros(length(risks_ndcg_partway[1][10]), length(k_vals))
